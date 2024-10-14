@@ -14,9 +14,9 @@ mystarttime='2017-09-10T15:51:00' #**************************************
 myendtime='2017-09-10T15:52:00'   #**************************************
 mystart_time = dt.datetime.strptime(mystarttime,'%Y-%m-%dT%H:%M:%S')
 myend_time = dt.datetime.strptime(myendtime, '%Y-%m-%dT%H:%M:%S')
-myseries='hmi.Ic_45s'             #changed**************************************
+myseries='hmi.Ic_45s'             #**************************************
 mywavelengths="6173.3"               #**************************************  
-myemail="acase2@sheffield.ac.uk"  #changed**************************************
+myemail="acase2@sheffield.ac.uk" #**************************************
 
 
 # Create a client instance
@@ -26,7 +26,7 @@ my_client = jd.client(myemail, verbose=True)
 request_string = my_client.create_request_string(myseries, mystart_time, myend_time, wavelength=mywavelengths, segment="image")
 
 # Search using the request string
-download_dir = '/Users/AlexC/source/repos/solar_granulations/pictures'  #changed*******************************************
+download_dir = 'C:/Users/AlexC/source/repos/solar_granulations/imagedata'  #*******************************************
 search_result = my_client.search(request_string)
 print(search_result)
 

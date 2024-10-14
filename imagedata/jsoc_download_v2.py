@@ -73,9 +73,4 @@ class client:
 					os.replace(download_dir + file, download_dir + name)
 					files_downloaded[i] = name			
 		return files_downloaded
-
-
-
-
-
-
+	
