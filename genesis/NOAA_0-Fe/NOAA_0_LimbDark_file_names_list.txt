@@ -1,0 +1,2 @@
+hmi.ic_45s.20170910_155145_TAI.2.continuum.fits
+hmi.ic_45s.20170910_155230_TAI.2.continuum.fits

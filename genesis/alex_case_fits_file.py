@@ -8,7 +8,7 @@ import astropy.io.fits as f
 
 file_folder="NOAA_0-Fe/FITS_files"
 file_list=sorted(os.listdir(file_folder))
-imagesize=np.shape(f.getdata(f'{file_folder}/{filelist[0]}'))
+imagesize=np.shape(f.getdata(f'{file_folder}/{file_list[0]}'))
 mycmap1=cm.color_tables.aia_color_table(193*u.angstrom)
 image=f.getdata(f'{file_folder}/{file_list[0]}')
 plt.imshow(np.rot90(image[:,:],3), cmap=mycmap1, origin="lower")
