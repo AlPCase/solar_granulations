@@ -115,6 +115,5 @@ cropped_map_rescaled = sm.Map(image_data_rescaled, cropped_map.meta)  # Create a
 fig = plt.figure()  # Create a new figure
 ax = fig.add_subplot(projection = cropped_map_rescaled)  # Add a subplot to the figure
 cropped_map_rescaled.plot()  # Plot the contrast-enhanced SunPy map object
+plt.title('Contrast Enhanced SunPy Map')  # Set the title of the plot
 plt.show()  # Show the plot
-
-# Creating a curvature map from processed image
