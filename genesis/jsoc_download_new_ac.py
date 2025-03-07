@@ -166,7 +166,7 @@ def downloadSDO(series, use_time_stamps, time_stamps, start_date, end_date, down
     return FITS_path, file_name_array ;
 
 myemail="acase2@sheffield.ac.uk"
-series = 'hmi.Ic_45s'
+series = 'hmi.Ic_720s'
 NOAA = '0'
 wavelength = 'Fe' #can be whatever, just for the folder name
 mydir = ''
@@ -177,7 +177,7 @@ use_time_stamps = 0
 # are used here
 start_date = Time('2017-09-10T15:51:00')
 end_date = Time('2017-09-10T15:52:00')
-dt = 45 #[seconds]
+dt = 720 #[seconds]
 
 main_dir = 'NOAA_' + str(NOAA) + '-' + wavelength
 new_path = check_path(mydir, main_dir)

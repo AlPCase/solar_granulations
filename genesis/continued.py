@@ -40,45 +40,65 @@ def calc_second_derivative(image, i, j):
     sd_nwse = np.sum(kernel_image * kernel_nwse)
 
     # If the signs of all the second derivatives are the same, set this pixel as an "object pixel"
-    if np.sign(sd_ns) == np.sign(sd_ew) == np.sign(sd_nesw) == np.sign(sd_nwse):
-        if np.sign(sd_ns) == -1:    # If the sign of the second derivative is negative, the object is called "bright".
-            return 1
-        else:
-            return 0    # otherwise, the object is called "dark".
+    if np.sign(sd_ns) == np.sign(sd_ew) == np.sign(sd_nesw) == np.sign(sd_nwse) == -1:
+        return 1
+    else:
+        return 0    # otherwise, the object is called "dark".
 
 
-file_folder = "NOAA_0-Fe/FITS_files"  # Define the file folder where the FITS files are stored
-file_list = sorted(os.listdir(file_folder))  # List the files in the folder
+def getimagemask(file_index):
+
+    file_folder = "NOAA_0-Fe/FITS_files"  # Define the file folder where the FITS files are stored ############# Should make this a global variable
+    file_list = sorted(os.listdir(file_folder))  # List the files in the folder
+
+    # Storing FITS image as SunPy Map object
+    sunpy_map = sm.Map(f'{file_folder}/{file_list[file_index]}')  # Create a SunPy map object from the first image
+    sunpy_map_rotated = sunpy_map.rotate(order = 3)  # Rotate the SunPy map object using bi-cubic iterpolation so the solar north is at the top of the image
 
 
-# Storing FITS image as SunPy Map object
-sunpy_map = sm.Map(f'{file_folder}/{file_list[0]}')  # Create a SunPy map object from the first image
-sunpy_map_rotated = sunpy_map.rotate(order = 3)  # Rotate the SunPy map object using bi-cubic iterpolation so the solar north is at the top of the image
+    # Cropping a map using SkyCoord
+    top_right = SkyCoord(25 * u.arcsec, 25 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
+    bottom_left = SkyCoord(0 * u.arcsec, 0 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
+    cropped_map = sunpy_map_rotated.submap(bottom_left, top_right = top_right)  # Crop the SunPy map object
 
 
-# Cropping a map using SkyCoord
-top_right = SkyCoord(25 * u.arcsec, 25 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
-bottom_left = SkyCoord(0 * u.arcsec, 0 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
-cropped_map = sunpy_map_rotated.submap(bottom_left, top_right = top_right)  # Crop the SunPy map object
+    # Create a binary mask? pretty please
+    binary_mask = np.zeros(cropped_map.data.shape)  # Create an array of zeros with the same shape as the cropped image
+
+    padded_image = np.pad(cropped_map.data, pad_width=1, mode='constant', constant_values=0)    # Pad the image with zeros to handle edge cases
+
+    for i in range(1, padded_image.shape[0] - 1):
+        for j in range(1, padded_image.shape[0] - 1):
+            binary_mask[i-1, j-1] = calc_second_derivative(padded_image, i, j)  # Store the result of calc_second_derivative in the binary mask. Subtract 1 from i and j to account for padding.
+
+    return cropped_map, binary_mask
 
 
-# Create a binary mask? pretty please
-binary_mask = np.zeros(cropped_map.data.shape)  # Create an array of zeros with the same shape as the cropped image
+################### Start of Code ########################
 
-padded_image = np.pad(cropped_map.data, pad_width=1, mode='constant', constant_values=0)    # Pad the image with zeros to handle edge cases
+cropped_map, binary_mask = getimagemask(0)
 
-for i in range(1, padded_image.shape[0] - 1):
-    for j in range(1, padded_image.shape[0] - 1):
-        binary_mask[i-1, j-1] = calc_second_derivative(padded_image, i, j)  # Store the result of calc_second_derivative in the binary mask. Subtract 1 from i and j to account for padding.
-
+cropped_map_720s, binary_mask_720s = getimagemask(2)
 
 # Plot the cropped map and binary mask side by side
-fig, axs = plt.subplots(1, 3, figsize=(15, 5))  # Create a figure with two subplots
-axs[0].imshow(cropped_map.data, cmap = 'gray')  # Display the cropped map in the first subplot
-axs[0].set_title('Cropped Map')  # Set the title of the first subplot
-axs[1].imshow(binary_mask, cmap = 'gray')  # Display the binary mask in the second subplot
-axs[1].set_title('Binary Mask')  # Set the title of the second subplot
-axs[2].imshow(binary_mask, cmap ='gray')
-axs[2].imshow(cropped_map.data, cmap = 'gray', alpha=0.5)  # Display the cropped map in the third subplot with 50% opacity
-axs[2].set_title('Binary Mask Overlay')  # Set the title of the third subplot
+fig, axs = plt.subplots(2, 3, figsize=(15, 10))  # Create a figure with two rows and three columns of subplots
+
+# Plot the first set of images
+axs[0, 0].imshow(cropped_map.data, cmap='gray')  # Display the cropped map in the first subplot
+axs[0, 0].set_title('Cropped Map')  # Set the title of the first subplot
+axs[0, 1].imshow(binary_mask, cmap='gray')  # Display the binary mask in the second subplot
+axs[0, 1].set_title('Binary Mask')  # Set the title of the second subplot
+axs[0, 2].imshow(binary_mask, cmap='gray')
+axs[0, 2].imshow(cropped_map.data, cmap='gray', alpha=0.5)  # Display the cropped map in the third subplot with 50% opacity
+axs[0, 2].set_title('Binary Mask Overlay')  # Set the title of the third subplot
+
+# Plot the second set of images
+axs[1, 0].imshow(cropped_map_720s.data, cmap='gray')  # Display the cropped map in the fourth subplot
+axs[1, 0].set_title('Cropped Map 720s')  # Set the title of the fourth subplot
+axs[1, 1].imshow(binary_mask_720s, cmap='gray')  # Display the binary mask in the fifth subplot
+axs[1, 1].set_title('Binary Mask 720s')  # Set the title of the fifth subplot
+axs[1, 2].imshow(binary_mask_720s, cmap='gray')
+axs[1, 2].imshow(cropped_map_720s.data, cmap='gray', alpha=0.5)  # Display the cropped map in the sixth subplot with 50% opacity
+axs[1, 2].set_title('Binary Mask Overlay 720s')  # Set the title of the sixth subplot
+
 plt.show()
