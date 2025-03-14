@@ -6,7 +6,8 @@ import sunpy.map as sm
 import astropy.io.fits as f                 # Include the library for handling FITS files
 import astropy.units as u                   # Include the library for units
 from astropy.coordinates import SkyCoord    # Include the library for sky coordinates
-from reproject import reproject_interp      # Include the library for reprojecting images
+from scipy.ndimage import label, center_of_mass
+from matplotlib.colors import ListedColormap
 
 
 def calc_second_derivative(image, i, j):
@@ -65,7 +66,7 @@ def getimagemask(file_index):
     # Create a binary mask? pretty please
     binary_mask = np.zeros(cropped_map.data.shape)  # Create an array of zeros with the same shape as the cropped image
 
-    padded_image = np.pad(cropped_map.data, pad_width=1, mode='constant', constant_values=0)    # Pad the image with zeros to handle edge cases
+    padded_image = np.pad(cropped_map.data, pad_width=1, mode='constant', constant_values=0)    # Pad the image with NaNs to handle edge cases
 
     for i in range(1, padded_image.shape[0] - 1):
         for j in range(1, padded_image.shape[0] - 1):
@@ -74,11 +75,35 @@ def getimagemask(file_index):
     return cropped_map, binary_mask
 
 
+def label_objects(binary_mask):
+    
+    labelled_mask = np.zeros(binary_mask.shape) # Create an array of zeros with the same shape as the binary mask
+
+    s = np.ones((3, 3), dtype = np.int32)  # Create a 3x3 structuring element
+    labelled_mask, num_features = label(binary_mask, structure=s)  # Label the binary mask to identify the different objects in the image
+    
+    return labelled_mask, num_features
+
+
+def calc_centroids(labelled_mask):
+
+    # Calculate the centroids of each object within the labelled mask
+    centroids = center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:]) 
+
+    return centroids
+
+
+
 ################### Start of Code ########################
 
 cropped_map, binary_mask = getimagemask(0)
 
-cropped_map_720s, binary_mask_720s = getimagemask(2)
+cropped_map_720s, binary_mask_720s = getimagemask(1) # NO LONGER DOING 720S DATA!!!!!
+
+labelled_mask, num_features = label_objects(binary_mask)
+
+centroids = np.array(calc_centroids(labelled_mask))
+
 
 # Plot the cropped map and binary mask side by side
 fig, axs = plt.subplots(2, 3, figsize=(15, 10))  # Create a figure with two rows and three columns of subplots
@@ -92,13 +117,9 @@ axs[0, 2].imshow(binary_mask, cmap='gray')
 axs[0, 2].imshow(cropped_map.data, cmap='gray', alpha=0.5)  # Display the cropped map in the third subplot with 50% opacity
 axs[0, 2].set_title('Binary Mask Overlay')  # Set the title of the third subplot
 
-# Plot the second set of images
-axs[1, 0].imshow(cropped_map_720s.data, cmap='gray')  # Display the cropped map in the fourth subplot
-axs[1, 0].set_title('Cropped Map 720s')  # Set the title of the fourth subplot
-axs[1, 1].imshow(binary_mask_720s, cmap='gray')  # Display the binary mask in the fifth subplot
-axs[1, 1].set_title('Binary Mask 720s')  # Set the title of the fifth subplot
-axs[1, 2].imshow(binary_mask_720s, cmap='gray')
-axs[1, 2].imshow(cropped_map_720s.data, cmap='gray', alpha=0.5)  # Display the cropped map in the sixth subplot with 50% opacity
-axs[1, 2].set_title('Binary Mask Overlay 720s')  # Set the title of the sixth subplot
 
-plt.show()
+axs[1, 0].imshow(binary_mask, cmap='gray')
+axs[1, 0].scatter(centroids[:,1], centroids[:,0], s=10, c='red', marker='x', linewidths=1)
+axs[1, 0].set_title('Binary Mask with Centroids')
+
+plt.savefig('plots/output_plot.png')
