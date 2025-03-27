@@ -41,8 +41,10 @@ def calc_second_derivative(image, i, j):
 def label_objects(binary_mask):
     """Label connected components in the binary mask."""
 
+    labelled_mask = np.zeros(binary_mask.shape)  # Create an array of zeros with the same shape as the binary mask
+
     s = np.ones((3, 3), dtype=np.int32)  # Structuring element, 3x3 square
-    labelled_mask, num_features = np.zeros(binary_mask.shape) # Create an array of zeros with the same shape as the binary mask
+    labelled_mask, num_features = label(binary_mask, structure=s) # Create an array of zeros with the same shape as the binary mask
 
     return labelled_mask, num_features
 
@@ -50,4 +52,4 @@ def calc_centroids(labelled_mask):
     """Calculate centroids of labeled objects."""
     centroids = center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:])
     
-    return np.array(centroids)
+    return centroids
