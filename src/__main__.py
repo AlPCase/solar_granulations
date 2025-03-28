@@ -1,11 +1,13 @@
 import os
-from src.utils import calc_second_derivative, label_objects, calc_centroids
+from src.utils import calc_second_derivative, label_objects
 from src.visualisation import plot_results
 import sunpy.map as sm
 import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 import matplotlib.pyplot as plt
+from scipy.ndimage import center_of_mass
+from scipy.spatial.distance import cdist # For calculating distance between centroids?
 
 
 def getimagemask(file_index):
@@ -39,30 +41,44 @@ def getimagemask(file_index):
 
 ################### Start of Code ########################
 
-cropped_map, binary_mask = getimagemask(0)
+cropped_map_0, binary_mask_0 = getimagemask(0) # Store the first FITS image in the file as a cropped sunpy map
 
-labelled_mask, num_features = label_objects(binary_mask)
-centroids = np.array(calc_centroids(labelled_mask))
+labelled_mask_0, num_features_0 = label_objects(binary_mask_0)
+centroids_0 = np.array(center_of_mass(labelled_mask_0, labels=labelled_mask_0, index=np.unique(labelled_mask_0)[1:])) # Calculate the centroids of the labelled objects and turn them into a NumPy array
 
-cropped_map_1, binary_mask_1 = getimagemask(1)
+cropped_map_1, binary_mask_1 = getimagemask(1)  # Store the second FITS image as a cropped sunpy map
 
 labelled_mask_1, num_features_1 = label_objects(binary_mask_1)
-centroids_1 = np.array(calc_centroids(labelled_mask_1))
+centroids_1 = np.array(center_of_mass(labelled_mask_1, labels=labelled_mask_1, index=np.unique(labelled_mask_1)[1:]))
+
+
+# Calculate the distance between each centroid in image 0 and all centroids in image 1
+
+
+# For each centroid in image 0, find the nearest centroid in image 1 within a maximum displacement threshold
+
+
+# Ensure that each centroid in image 1 is only matched once
+
+
+# Collect these pairs as trajectories
+
 
 # Plot the cropped map and binary mask side by side
 fig, axs = plt.subplots(2, 3, figsize=(15, 10))  # Create a figure with two rows and three columns of subplots
 
 # Plot the binary maps with centroids of each image, then the centroids placed atop one another
-axs[0, 0].imshow(binary_mask, cmap='gray')  # Display the binary mask in the first subplot
-axs[0, 0].scatter(centroids[:,1], centroids[:,0], s=10, c='red', marker='x', linewidths=1)  # Scatter plot the centroids on the binary mask
+axs[0, 0].imshow(binary_mask_0, cmap='gray')  # Display the binary mask in the first subplot
+axs[0, 0].scatter(centroids_0[:,1], centroids_0[:,0], s=10, c='red', marker='x', linewidths=1)  # Scatter plot the centroids on the binary mask
 axs[0, 0].set_title('OLD Binary Mask with Centroids')  # Set the title of the first subplot
 
 axs[0, 1].imshow(binary_mask_1, cmap='gray')  # Display the binary mask in the second subplot
 axs[0, 1].scatter(centroids_1[:,1], centroids_1[:,0], s=10, c='red', marker='x', linewidths=1)  # Scatter plot the centroids on the binary mask
 axs[0, 1].set_title('NEW Binary Mask with Centroids')  # Set the title of the second subplot
 
-axs[0,2].scatter(centroids[:,1], centroids[:,0], s=10, c='red', marker='x', linewidths=1)  # Scatter plot the centroids of the first image
+axs[0,2].scatter(centroids_0[:,1], centroids_0[:,0], s=10, c='red', marker='x', linewidths=1)  # Scatter plot the centroids of the first image
 axs[0,2].scatter(centroids_1[:,1], centroids_1[:,0], s=10, c='blue', marker='x', linewidths=1)  # Scatter plot the centroids of the second image
+
 
 os.makedirs('plots', exist_ok=True)  # Create the 'plots' folder at the root if it doesn't exist
 plt.savefig('plots/output_plot_main.png')  # Save the plot in the 'plots' folder with the specified title
