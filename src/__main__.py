@@ -7,7 +7,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 import matplotlib.pyplot as plt
 from scipy.ndimage import center_of_mass
-from scipy.spatial.distance import cdist # For calculating distance between centroids?
+from scipy.spatial import KDTree # For calculating distance between centroids?
 
 
 def getimagemask(file_index):
@@ -52,16 +52,34 @@ labelled_mask_1, num_features_1 = label_objects(binary_mask_1)
 centroids_1 = np.array(center_of_mass(labelled_mask_1, labels=labelled_mask_1, index=np.unique(labelled_mask_1)[1:]))
 
 
-# Calculate the distance between each centroid in image 0 and all centroids in image 1
+# Define max displacement threshold in pixels !!!!!!!! This needs to actually be calculated !!!!!!!!!!!!
+max_displacement = 2
 
+# Build KDTree from NEW centroids
+tree = KDTree(centroids_1[:, ::-1]) # KDTree requires the coordinates to be in (x, y) format, so we reverse the order of the columns
 
-# For each centroid in image 0, find the nearest centroid in image 1 within a maximum displacement threshold
+# Query all OLD centroids for nearest neighbours
+distances, indices = tree.query(centroids_0[:, ::-1], workers=-1)  # Query the KDTree for the nearest neighbours of each OLD centroid
 
+# Collect all valid matches (i = index in OLD, j = index in NEW)
+potential_matches = []
+for i, (d,j) in enumerate(zip(distances, indices)):
+    if j < len(centroids_1):
+        potential_matches.append((i, j, d))
 
-# Ensure that each centroid in image 1 is only matched once
+# Sort matches by distance (closest first)
+potential_matches.sort(key=lambda x: x[2])
 
-
-# Collect these pairs as trajectories
+# Greedily select pairs to ensure one-to-one matching
+matched_i = []
+matched_j = []
+matches = []
+for match in potential_matches:
+    i, j, d = match
+    if i not in matched_i and j not in matched_j and d < max_displacement:
+        matched_i.append(i)
+        matched_j.append(j)
+        matches.append((i, j, d))
 
 
 # Plot the cropped map and binary mask side by side
@@ -78,6 +96,12 @@ axs[0, 1].set_title('NEW Binary Mask with Centroids')  # Set the title of the se
 
 axs[0,2].scatter(centroids_0[:,1], centroids_0[:,0], s=10, c='red', marker='x', linewidths=1)  # Scatter plot the centroids of the first image
 axs[0,2].scatter(centroids_1[:,1], centroids_1[:,0], s=10, c='blue', marker='x', linewidths=1)  # Scatter plot the centroids of the second image
+
+# Add lines between matched centroids
+for i, j, d in matches:
+    x0, y0 = centroids_0[i][1], centroids_0[i][0]  # (y, x) -> (x, y) format
+    x1, y1 = centroids_1[j][1], centroids_1[j][0]  # (y, x) -> (x, y) format
+    axs[0,2].plot([x0, x1], [y0, y1], 'k', linewidth=1.0)  # Draw a dashed line between the matched centroids
 
 
 os.makedirs('plots', exist_ok=True)  # Create the 'plots' folder at the root if it doesn't exist
