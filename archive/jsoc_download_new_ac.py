@@ -176,7 +176,7 @@ use_time_stamps = 0
 
 # are used here
 start_date = Time('2017-09-10T15:51:00')
-end_date = Time('2017-09-10T15:52:00')
+end_date = Time('2017-09-10T15:53:00')
 dt = 45 #[seconds]
 
 main_dir = 'NOAA_' + str(NOAA) + '-' + wavelength
