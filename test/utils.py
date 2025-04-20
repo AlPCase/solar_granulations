@@ -88,10 +88,11 @@ def label_objects(binary_mask):
 
 def trajectories(centroids_OLD, centroids_NEW, flow_velocity_threshold):
     """Calculate the trajectories of centroids between two images."""
-
+    
     # Convert km/s to pixels/frame
     max_displacement = (flow_velocity_threshold * 45) / (725 * 0.5)  # 45s temporal relution, 1" (effective resolution) is 725km, each pixel is 0.5"
     
+
     # Build KDTree from NEW centroids
     tree = KDTree(centroids_NEW[:, ::-1]) # KDTree requires the coordinates to be in (x, y) format, so we reverse the order of the columns
 
@@ -100,34 +101,34 @@ def trajectories(centroids_OLD, centroids_NEW, flow_velocity_threshold):
 
     # Collect all valid matches (i = index in OLD, j = index in NEW)
     potential_matches = []
-    for index_OLD, (distance, index_NEW) in enumerate(zip(distances, indices)):
-        if distance <= max_displacement:  # Only include matches within the threshold
-            potential_matches.append((index_OLD, index_NEW, distance))
+    for i, (d, j) in enumerate(zip(distances, indices)):
+        if d <= max_displacement:  # Only include matches within the threshold
+            potential_matches.append((i, j, d))
 
     # Sort matches by distance (x[2]) (closest first)
     potential_matches.sort(key=lambda x: x[2])
 
-    # Ensure one-to-one matching by checking that the centroids are not already matched, then choosing the matches with the shortest distance first.
-    matched_index_OLD = []
-    matched_index_NEW = []
+    # Ensure one-to-one matching by checking that the centroids are not already matched, choosing the matches with the shortest distance first.
+    matched_i = []
+    matched_j = []
     matches = []
     for match in potential_matches:
-        index_OLD, index_NEW, distance = match
-        if index_OLD not in matched_index_OLD and index_NEW not in matched_index_OLD and distance < max_displacement:  # Check if the indices are already matched
-            matched_index_OLD.append(index_NEW) # Mark OLD centroid as matched
-            matched_index_NEW.append(index_OLD) # Mark NEW centroid as matched
-            matches.append((index_OLD, index_NEW, distance))   # Append the match to the list of matches
+        i, j, d = match # Potentially redundant line? Could just write for i, j, d in potential_matches: ????????????
+        if i not in matched_i and j not in matched_j and d < max_displacement:
+            matched_i.append(i)
+            matched_j.append(j)
+            matches.append((i, j, d))
 
     # Extract coordinates of matched centroids
     x0 = []
     y0 = []
     x1 = []
     y1 = []
-    for index_OLD, index_NEW, distance in matches:
-        y0.append(centroids_OLD[index_OLD][0])  # y-coordinate of centroids_0
-        x0.append(centroids_OLD[index_OLD][1])  # x-coordinate of centroids_0
-        y1.append(centroids_NEW[index_NEW][0])  # y-coordinate of centroids_1
-        x1.append(centroids_NEW[index_NEW][1])  # x-coordinate of centroids_1
+    for i, j, d in matches:
+        y0.append(centroids_OLD[i][0])  # y-coordinate of centroids_0
+        x0.append(centroids_OLD[i][1])  # x-coordinate of centroids_0
+        y1.append(centroids_NEW[j][0])  # y-coordinate of centroids_1
+        x1.append(centroids_NEW[j][1])  # x-coordinate of centroids_1
 
     # Convert to NumPy arrays
     x0 = np.array(x0)
