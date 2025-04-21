@@ -45,10 +45,9 @@ def calc_second_derivative(image, i, j):
         return 0  # Dark object pixel
 
 
-def getimagemask(file_index):
+def getimagemask(file_index, file_folder):
     """ Load a FITS file, crop it, and create a binary mask. """
 
-    file_folder = "NOAA_0-Fe/FITS_files"  # Define the file folder where the FITS files are stored ############# Should make this a global variable
     file_list = sorted(os.listdir(file_folder))  # List the files in the folder
 
     # Storing FITS image as SunPy Map object
@@ -57,7 +56,7 @@ def getimagemask(file_index):
 
 
     # Cropping a map using SkyCoord
-    top_right = SkyCoord(25 * u.arcsec, 25 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
+    top_right = SkyCoord(10 * u.arcsec, 10 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
     bottom_left = SkyCoord(0 * u.arcsec, 0 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
     cropped_map = sunpy_map_rotated.submap(bottom_left, top_right = top_right)  # Crop the SunPy map object
 
@@ -92,48 +91,33 @@ def trajectories(centroids_OLD, centroids_NEW, flow_velocity_threshold):
     # Convert km/s to pixels/frame
     max_displacement = (flow_velocity_threshold * 45) / (725 * 0.5)  # 45s temporal relution, 1" (effective resolution) is 725km, each pixel is 0.5"
     
-    # Build KDTree from NEW centroids
-    tree = KDTree(centroids_NEW[:, ::-1]) # KDTree requires the coordinates to be in (x, y) format, so we reverse the order of the columns
+    # Create a KDTree from NEW centroids
+    tree = KDTree(centroids_NEW[:, :2]) # KDTree requires 
 
-    # Query all OLD centroids for nearest neighbours
-    distances, indices = tree.query(centroids_OLD[:, ::-1])  # Query the KDTree for the nearest neighbours of each OLD centroid
+    # Query all OLD centroids for nearest neighbours in NEW centroids
+    distances, indices = tree.query(centroids_OLD[:, :2])  # Find the nearest neighbour for each OLD centroid
 
-    # Collect all valid matches (i = index in OLD, j = index in NEW)
+    # Collect all potential matches with their distances
     potential_matches = []
-    for index_OLD, (distance, index_NEW) in enumerate(zip(distances, indices)):
-        if distance <= max_displacement:  # Only include matches within the threshold
-            potential_matches.append((index_OLD, index_NEW, distance))
+    for old, (dist, new) in enumerate(zip(distances, indices)):
+        if dist < max_displacement:
+            potential_matches.append((old, new, dist)) # old refers to the index in OLD, new refers to the index in NEW
 
-    # Sort matches by distance (x[2]) (closest first)
+    # Sort matches by distance (closest first)
     potential_matches.sort(key=lambda x: x[2])
 
-    # Ensure one-to-one matching by checking that the centroids are not already matched, then choosing the matches with the shortest distance first.
-    matched_index_OLD = []
-    matched_index_NEW = []
-    matches = []
+    matched_old = []  # List to keep track of matched OLD indices
+    matched_new = []  # List to keep track of matched NEW indices
+    matches = []  # List to store the final matches
     for match in potential_matches:
-        index_OLD, index_NEW, distance = match
-        if index_OLD not in matched_index_OLD and index_NEW not in matched_index_OLD and distance < max_displacement:  # Check if the indices are already matched
-            matched_index_OLD.append(index_NEW) # Mark OLD centroid as matched
-            matched_index_NEW.append(index_OLD) # Mark NEW centroid as matched
-            matches.append((index_OLD, index_NEW, distance))   # Append the match to the list of matches
+        old, new, dist = match
+        if old not in matched_old and new not in matched_new:
+            matched_old.append(old)
+            matched_new.append(new)
+            matches.append((old, int(new), dist))
 
-    # Extract coordinates of matched centroids
-    x0 = []
-    y0 = []
-    x1 = []
-    y1 = []
-    for index_OLD, index_NEW, distance in matches:
-        y0.append(centroids_OLD[index_OLD][0])  # y-coordinate of centroids_0
-        x0.append(centroids_OLD[index_OLD][1])  # x-coordinate of centroids_0
-        y1.append(centroids_NEW[index_NEW][0])  # y-coordinate of centroids_1
-        x1.append(centroids_NEW[index_NEW][1])  # x-coordinate of centroids_1
-
-    # Convert to NumPy arrays
-    x0 = np.array(x0)
-    y0 = np.array(y0)
-    x1 = np.array(x1)
-    y1 = np.array(y1)
-
-
-    return x0, y0, x1, y1, matches
+    # Create a list of unmatched OLD and NEW centroids
+    unmatched_old = [i for i in range(len(centroids_OLD)) if i not in matched_old]
+    unmatched_new = [i for i in range(len(centroids_NEW)) if i not in matched_new]
+    
+    return matches, unmatched_old, unmatched_new
