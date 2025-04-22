@@ -4,7 +4,7 @@ import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from scipy.ndimage import label, center_of_mass
-from scipy.spatial import KDTree  # For determining nearest neighbour centroids
+from scipy.spatial import KDTree
 
 
 def calc_second_derivative(image, i, j):
@@ -45,7 +45,7 @@ def calc_second_derivative(image, i, j):
         return 0  # Dark object pixel
 
 
-def getimagemask(file_index, file_folder):
+def getimagemask(file_index, file_folder, roi_size, roi_center):
     """ Load a FITS file, crop it, and create a binary mask. """
 
     file_list = sorted(os.listdir(file_folder))  # List the files in the folder
@@ -56,8 +56,8 @@ def getimagemask(file_index, file_folder):
 
 
     # Cropping a map using SkyCoord
-    top_right = SkyCoord(10 * u.arcsec, 10 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
-    bottom_left = SkyCoord(0 * u.arcsec, 0 * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
+    top_right = SkyCoord(roi_size * u.arcsec, roi_size * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
+    bottom_left = SkyCoord(roi_center[0] * u.arcsec, roi_center[1] * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
     cropped_map = sunpy_map_rotated.submap(bottom_left, top_right = top_right)  # Crop the SunPy map object
 
 
@@ -85,7 +85,7 @@ def label_objects(binary_mask):
     return labelled_mask, num_features
 
 
-def trajectories(centroids_OLD, centroids_NEW, flow_velocity_threshold):
+def matching(centroids_OLD, centroids_NEW, flow_velocity_threshold):
     """Calculate the trajectories of centroids between two images."""
 
     # Convert km/s to pixels/frame
@@ -121,3 +121,91 @@ def trajectories(centroids_OLD, centroids_NEW, flow_velocity_threshold):
     unmatched_new = [i for i in range(len(centroids_NEW)) if i not in matched_new]
     
     return matches, unmatched_old, unmatched_new
+
+
+def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi_center):
+    """ Calculate the trajectories of centroids in a series of images. """
+
+    # Initialise trajectories
+    trajectories_list = []          # List to store trajectories
+    completed_trajectories = set()  # Set to keep track of completed trajectories
+    trajectory_id = 0               # Initialise unique ID for each trajectory
+
+    # Define list to store centroids for all the fames
+    all_centroids = []
+
+    # Process each frame and calulate the centroids
+    for frame_index in range(num_frames):
+        cropped_map, binary_mask = getimagemask(frame_index, file_folder, roi_size, roi_center)        # Store the FITS image in the file as a cropped sunpy map & create a binary mask
+        labelled_mask, num_features = label_objects(binary_mask)    # Label the objects in the binary mask
+        centroids = np.array(center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:])) # Calculate the centroids of the labelled objects and turn them into a NumPy array
+        all_centroids.append(centroids)                             # Append the centroids to the list
+
+        if frame_index==0:  
+            # Initialise the trajectories using the centroids from the first frame
+            for trajectory_id, position in enumerate(centroids): #! potential robustness issue Re. trajectory_id?
+                trajectories_list.append({
+                    "id": trajectory_id,        # Unique ID for the trajectory
+                    "positions": [position],    # List to store the positions of each
+                    "frames": [frame_index],    # List to store the frames where the trajectory is present
+                    "index": trajectory_id      # Index of the previous trajectory for linking to next frame
+                })
+                trajectory_id += 1  # Increment the trajectory ID for the next trajectory
+        
+        else:
+            # Match centroids between OLD and NEW frames
+
+            centroids_OLD = all_centroids[frame_index - 1]  # Centroids from the previous frame
+            centroids_NEW = all_centroids[frame_index]      # Centroids from the current frame
+
+            # Calculate the nearest neighbour matched centroids between the two frames
+            matches, unmatched_old, unmatched_new = matching(centroids_OLD, centroids_NEW, flow_velocity_threshold)  
+
+            # Update the trajectories with the new matches
+            matched_trajectories = set()    # Set to keep track of matched trajectories
+            for old, new, dist in matches:
+        
+                trajectory = next(          # Find the trajectory in the list that matches the old centroid
+                    (
+                        t for t in trajectories_list
+                        if t["index"] == old
+                        and t["id"] not in matched_trajectories     # Prevent adding to the same trajectory multiple times
+                        and t["id"] not in completed_trajectories   # Check the trajectory is not "completed"
+                        and t["frames"][-1] == frame_index - 1      # Check if the trajectory is from the previous frame (adds robustness against re-adding to "completed" trajectories)
+                    ),
+                    None)          # None is returned if no trajectory is found
+                
+                if trajectory:
+                    trajectory["positions"].append(centroids_NEW[new])  # Append the new position to the trajectory
+                    trajectory["frames"].append(frame_index)            # Append the current frame index to the trajectory
+                    trajectory["index"] = int(new)                      # Update the temp index of the trajectory to that of new centroid.
+                    matched_trajectories.add(trajectory["id"])          # Mark the trajectory as matched
+
+                    #print(f"OLD centroid {old}, position {centroids_OLD[old]} matched with NEW centroid {new}, position {centroids_NEW[new]} and added to trajectory ID {trajectory['id']} with distance {dist:.2f}")
+
+            matched_trajectories.clear()  # Clear the set for the next frame
+            
+            # Create new trajectories from unmatched new centroids
+            for Unew in unmatched_new:
+                trajectories_list.append({
+                    "id": trajectory_id,                # Unique ID for the trajectory
+                    "positions": [centroids_NEW[Unew]], # List to store the positions of each centroid
+                    "frames": [frame_index],            # List to store the frames where the trajectory is present
+                    "index": Unew                       # Index of the previous trajectory for linking to next frame
+                })
+                trajectory_id += 1              # Increment the trajectory ID for the next trajectory to be created
+            
+            # "end" the trajectories corresponding unmatched old centroids
+            for Uold in unmatched_old:
+                trajectory = next(
+                    (
+                        t for t in trajectories_list
+                        if t["index"] == Uold           # Find the trajectory in the list that matches the old centroid
+                    ),
+                    None)        # None is returned if no trajectory is found
+                
+                if trajectory:
+                    trajectory["index"] = -1                      # Mark the trajectory as ended by setting the index to -1 (no new centroid positions will be added)
+                    completed_trajectories.add(trajectory["id"])  # Mark the trajectory as completed
+
+    return trajectories_list
