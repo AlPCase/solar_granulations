@@ -2,3 +2,4 @@ NOAA_0-Fe/FITS_files/
 **/__pycache__/
 *.pyc
 .pytest_cache/
+test/testdata/
