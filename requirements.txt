@@ -4,3 +4,4 @@ sunpy
 astropy
 scipy
 pandas
+PyWavelets

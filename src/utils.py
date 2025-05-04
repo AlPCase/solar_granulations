@@ -56,8 +56,8 @@ def getimagemask(file_index, file_folder, roi_size, roi_center):
 
 
     # Cropping a map using SkyCoord
-    top_right = SkyCoord(roi_size * u.arcsec, roi_size * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
-    bottom_left = SkyCoord(roi_center[0] * u.arcsec, roi_center[1] * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
+    top_right = SkyCoord(roi_size*u.arcsec, roi_size*u.arcsec, frame=sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
+    bottom_left = SkyCoord(roi_center[0]*u.arcsec, roi_center[1]*u.arcsec, frame=sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
     cropped_map = sunpy_map_rotated.submap(bottom_left, top_right = top_right)  # Crop the SunPy map object
 
 

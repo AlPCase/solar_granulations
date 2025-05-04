@@ -1,50 +1,30 @@
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend for matplotlib
+
 import os
-from test.utils import getimagemask, label_objects, trajectories
+from src.utils import getimagemask, label_objects, matching, trajectories
 import sunpy.map as sm
 import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 import matplotlib.pyplot as plt
 from scipy.ndimage import center_of_mass
-from scipy.spatial import KDTree # For calculating distance between centroids?
+from scipy.spatial import KDTree
+from scipy.interpolate import RBFInterpolator
+import pywt
 
-# Define max velocity threshold
-flow_velocity_threshold = 5 # km/s
+# Define the file folder where the FITS files are stored
+file_folder = 'test/testdata'
+file_list = sorted(os.listdir(file_folder))  # List the files in the folder
+file_index = 0
 
-# Number of consective frames to process
-num_frames = len(os.listdir("NOAA_0-Fe/FITS_files"))  # Get the number of frames in the folder
+# Storing FITS image as SunPy Map object
+sunpy_map = sm.Map(f'{file_folder}/{file_list[file_index]}')  # Create a SunPy map object from the first image
+sunpy_map_rotated = sunpy_map.rotate(order = 3)  # Rotate the SunPy map object using bi-cubic iterpolation so the solar north is at the top of the image
 
-# Define list to store centroids for all the fames
-all_centroids = []
-
-# Process each frame and calulate the centroids
-for frame_index in range(num_frames):
-    cropped_map, binary_mask = getimagemask(frame_index)    # Store the FITS image in the file as a cropped sunpy map & create a binary mask
-    labelled_mask, num_features = label_objects(binary_mask)    # Label the objects in the binary mask
-    centroids = np.array(center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:])) # Calculate the centroids of the labelled objects and turn them into a NumPy array
-    all_centroids.append(centroids)  # Append the centroids to the list
-
-# PLot the results
-fig, axs = plt.subplots(1, 1, figsize=(10, 10))
-
-# Plot trajectories for consecutive frames
-for frame_index in range(num_frames - 1):
-    centroids_OLD = all_centroids[frame_index]
-    centroids_NEW = all_centroids[frame_index + 1]
-
-    # Calculate trajectories between consecutive frames
-    x0, y0, x1, y1, matches = trajectories(centroids_OLD, centroids_NEW, flow_velocity_threshold)  # Calculate the trajectories of the centroids between the two images
-
-    # Plot the centroids
-    axs.scatter(centroids_OLD[:, 1], centroids_OLD[:, 0], s=10, c='red', marker='x', label='Frame 1 Centroids')
-    axs.scatter(centroids_NEW[:, 1], centroids_NEW[:, 0], s=10, c='blue', marker='x', label='Frame 2 Centroids')
-
-    # Plot the trajectories
-    for i in range(len(x0)):
-        axs.plot([x0[i], x1[i]], [y0[i], y1[i]], 'k', linewidth=0.5)  # Dashed line for trajectory
-
-# Save the plot
-os.makedirs('plots', exist_ok=True)
-output_path = os.path.join('plots', 'trajectories_plot.png')
-plt.savefig(output_path)
-print(f"Plot saved to {output_path}")
+# Display the SunPy map using Matplotlib and save the figure
+plt.figure(figsize=(10, 10))
+sunpy_map_rotated.plot()
+plt.title("SunPy Map, 2024/08/15, 08:00:45")
+output_path = os.path.join('test', 'plots', 'sunpy_map.png')
+plt.savefig(output_path, dpi=1000)
