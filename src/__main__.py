@@ -1,5 +1,5 @@
 import os
-from src.utils import getimagemask, label_objects, matching, trajectories
+from src.utils import getimagemask, label_objects, matching, trajectories, velocityField, wavelet_mra_smooth
 import sunpy.map as sm
 import numpy as np
 from astropy.coordinates import SkyCoord
@@ -9,22 +9,6 @@ from scipy.ndimage import center_of_mass
 from scipy.spatial import KDTree
 from scipy.interpolate import RBFInterpolator
 import pywt
-
-def wavelet_mra_smooth(grid, wavelet='db4', levels=4):
-    """ Apply wavelet MRA smoothing to a 2D grid of velocities. """
-    # Decompose the grid into wavelet coefficients
-    coeffs = pywt.wavedec2(grid, wavelet, level=levels)
-
-    # Keep only the approximation coefficients at the coarsest scale
-    coeffs_smooth = [coeffs[0]]
-    for i in range(1, len(coeffs)):
-        coeffs_smooth.append((
-            (np.zeros_like(coeffs[i][0])),
-            (np.zeros_like(coeffs[i][1])),
-            (np.zeros_like(coeffs[i][2]))
-        ))
-
-    return pywt.waverec2(coeffs_smooth, wavelet)
 
 
 # Define the file folder where the FITS files are stored
@@ -42,48 +26,15 @@ roi_center = [0, 0] # Bottom-left corner of the region of interest (arcsecond co
 
 
 # Number of consective frames to process
-num_frames = 17 #len(os.listdir(file_folder))  # Get the number of frames in the folder
+num_frames = 15 #len(os.listdir(file_folder))  # Get the number of frames in the folder
 
 trajectories_list = trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi_center)
 
-velocity_field = []
-for traj in trajectories_list:
-    positions = np.array(traj["positions"])
-    frames = np.array(traj["frames"])
+velocity_field = velocityField(trajectories_list, dt)
 
 
-    if len(frames) > 1:
-        # Calculate the mean velocity associated with each trajectory
-        # V_k = (X_n2 - X_n1) / (t_n2 - t_n1)
-        displacement = positions[-1] - positions[0] # Calculate displacement in pixels as the difference between the final and first positions
-        delta_X = displacement * (725/2) * u.km  # Convert to km
 
-        # Calculate number of frames and convert to seconds
-        active_frames = len(frames) - 1
-        delta_t = active_frames * dt * u.s  # Converting to seconds
-
-        if delta_t > 0:
-            V = delta_X / delta_t #displacement * u.pix #/ delta_t.value * u.pix/u.s #/ delta_t #! madness
-        else:
-            V = np.array([0, 0]) * u.pix #u.km / u.s  # Assign zero velocity if no time difference
-
-        # Calculate the mean position of each trajectory
-        # X_k = 1/(n1 - n2 + 1) * sum(X_n1, X_n2, ..., X_nk)
-        mean_position = np.mean(positions, axis=0)  # Mean position of the trajectory
-
-        # Combine the mean velocity and mean position of each trajectory
-        # into set {V_k, X_k} for each trajectory k
-        velocity_field.append({
-            "velocity": V,
-            "mean_position": mean_position,
-            "trajectory_id": traj["id"]
-        })
-    
-    else:
-        continue
-
-
-## Wavelet MRA smoothing of the velocity field ##
+##### Wavelet MRA smoothing of the velocity field #####
 
 # Extract positions and velocities from the velocity field
 positions = np.array([v["mean_position"] for v in velocity_field])
@@ -113,6 +64,7 @@ smoothed_vy = wavelet_mra_smooth(grid_vy, wavelet='db4', levels=2)
 
 
 ########### Plotting the results ###########
+print("\nCalculations complete! Plotting results:")
 
 # Plot the trajectories and velocity field side by side
 fig, axs = plt.subplots(2, 2, figsize=(20, 20))  # Create two subplots side by side
@@ -151,7 +103,6 @@ axs[1,1].quiver(grid_x, grid_y, smoothed_vx, smoothed_vy, scale=1, scale_units='
 axs[1,1].set_title("Smoothed Velocity Field")
 
 
-
 # Add a shared title for the figure
 fig.suptitle("Velocity Field", fontsize=16)
 
@@ -159,7 +110,7 @@ fig.suptitle("Velocity Field", fontsize=16)
 os.makedirs('plots', exist_ok=True)
 output_path = os.path.join('plots', 'MRA_velocity_field.png')
 plt.savefig(output_path)
-print(f"Plot saved to {output_path}")
+print(f"Velocity field plots saved to {output_path}")
 
 
 
@@ -187,3 +138,5 @@ os.makedirs('plots', exist_ok=True)
 output_path = os.path.join('plots', 'granule_lifetimes.png')
 plt.savefig(output_path)
 print(f"Granule lifetimes plot saved to {output_path}")
+
+print("\n")

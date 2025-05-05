@@ -5,6 +5,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 from scipy.ndimage import label, center_of_mass
 from scipy.spatial import KDTree
+import pywt
 
 
 def calc_second_derivative(image, i, j):
@@ -125,6 +126,8 @@ def matching(centroids_OLD, centroids_NEW, flow_velocity_threshold):
 
 def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi_center):
     """ Calculate the trajectories of centroids in a series of images. """
+    
+    print("\nConstructing trajectories...")
 
     # Initialise trajectories
     trajectories_list = []          # List to store trajectories
@@ -136,6 +139,7 @@ def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi
 
     # Process each frame and calulate the centroids
     for frame_index in range(num_frames):
+        print(f"Processing frame {frame_index+1} of {num_frames}...")
         cropped_map, binary_mask = getimagemask(frame_index, file_folder, roi_size, roi_center)        # Store the FITS image in the file as a cropped sunpy map & create a binary mask
         labelled_mask, num_features = label_objects(binary_mask)    # Label the objects in the binary mask
         centroids = np.array(center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:])) # Calculate the centroids of the labelled objects and turn them into a NumPy array
@@ -209,3 +213,67 @@ def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi
                     completed_trajectories.add(trajectory["id"])  # Mark the trajectory as completed
 
     return trajectories_list
+
+
+def velocityField(trajectories_list, dt):
+    """ Calculate the velocity field from the trajectories. """
+
+    print("\nDetermining velocity fields...")
+    
+    # Define the velocity field as a list of dictionaries
+    velocity_field = []
+    
+    
+    for traj in trajectories_list:  
+        positions = np.array(traj["positions"]) # Convert the list of positions to a NumPy array
+        frames = np.array(traj["frames"])       # Convert the list of frames to a NumPy array
+
+
+        if len(frames) > 1:
+            # Calculate the mean velocity associated with each trajectory
+            # V_k = (X_n2 - X_n1) / (t_n2 - t_n1)
+            displacement = positions[-1] - positions[0] # Calculate displacement in pixels as the difference between the final and first positions
+            delta_X = displacement * (725/2) * u.km  # Convert to km
+
+            # Calculate number of frames and convert to seconds
+            active_frames = len(frames) - 1
+            delta_t = active_frames * dt * u.s  # Converting to seconds
+
+            if delta_t > 0:
+                V = delta_X / delta_t #! ADJUST UNITS HERE (???)
+            else:
+                V = np.array([0, 0]) * u.pix #u.km / u.s  # Assign zero velocity if no time difference
+
+            # Calculate the mean position of each trajectory
+            # X_k = 1/(n1 - n2 + 1) * sum(X_n1, X_n2, ..., X_nk)
+            mean_position = np.mean(positions, axis=0)  # Mean position of the trajectory
+
+            # Combine the mean velocity and mean position of each trajectory
+            # into set {V_k, X_k} for each trajectory k
+            velocity_field.append({
+                "velocity": V,
+                "mean_position": mean_position,
+                "trajectory_id": traj["id"]
+            })
+        
+        else:
+            continue
+
+    return velocity_field
+
+
+def wavelet_mra_smooth(grid, wavelet='db4', levels=4):
+    """ Apply wavelet MRA smoothing to a 2D grid of velocities. """
+    # Decompose the grid into wavelet coefficients
+    coeffs = pywt.wavedec2(grid, wavelet, level=levels)
+
+    # Keep only the approximation coefficients at the coarsest scale
+    coeffs_smooth = [coeffs[0]]
+    for i in range(1, len(coeffs)):
+        coeffs_smooth.append((
+            (np.zeros_like(coeffs[i][0])),
+            (np.zeros_like(coeffs[i][1])),
+            (np.zeros_like(coeffs[i][2]))
+        ))
+
+    return pywt.waverec2(coeffs_smooth, wavelet)
