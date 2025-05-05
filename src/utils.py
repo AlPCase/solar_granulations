@@ -8,7 +8,7 @@ from scipy.spatial import KDTree
 import pywt
 
 
-def calc_second_derivative(image, i, j):
+def calcSecondDerivative(image, i, j):
     """Calculate the second derivative for a given pixel."""
 
     # Define a 3x3 kernel around the pixel of interest that includes adjacent pixels
@@ -46,7 +46,7 @@ def calc_second_derivative(image, i, j):
         return 0  # Dark object pixel
 
 
-def getimagemask(file_index, file_folder, roi_size, roi_center):
+def getImageMask(file_index, file_folder, roi_size, roi_center):
     """ Load a FITS file, crop it, and create a binary mask. """
 
     file_list = sorted(os.listdir(file_folder))  # List the files in the folder
@@ -69,13 +69,12 @@ def getimagemask(file_index, file_folder, roi_size, roi_center):
 
     for i in range(1, padded_image.shape[0] - 1):
         for j in range(1, padded_image.shape[0] - 1):
-            binary_mask[i-1, j-1] = calc_second_derivative(padded_image, i, j)  # Store the result of calc_second_derivative in the binary mask. Subtract 1 from i and j to account for padding.
+            binary_mask[i-1, j-1] = calcSecondDerivative(padded_image, i, j)  # Store the result of calcSecondDerivative in the binary mask. Subtract 1 from i and j to account for padding.
 
     return cropped_map, binary_mask
 
 
-
-def label_objects(binary_mask):
+def labelObjects(binary_mask):
     """Label connected components in the binary mask."""
 
     labelled_mask = np.zeros(binary_mask.shape)  # Create an array of zeros with the same shape as the binary mask
@@ -140,8 +139,8 @@ def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi
     # Process each frame and calulate the centroids
     for frame_index in range(num_frames):
         print(f"Processing frame {frame_index+1} of {num_frames}...")
-        cropped_map, binary_mask = getimagemask(frame_index, file_folder, roi_size, roi_center)        # Store the FITS image in the file as a cropped sunpy map & create a binary mask
-        labelled_mask, num_features = label_objects(binary_mask)    # Label the objects in the binary mask
+        cropped_map, binary_mask = getImageMask(frame_index, file_folder, roi_size, roi_center)        # Store the FITS image in the file as a cropped sunpy map & create a binary mask
+        labelled_mask, num_features = labelObjects(binary_mask)    # Label the objects in the binary mask
         centroids = np.array(center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:])) # Calculate the centroids of the labelled objects and turn them into a NumPy array
         all_centroids.append(centroids)                             # Append the centroids to the list
 
@@ -215,7 +214,7 @@ def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi
     return trajectories_list
 
 
-def velocityField(trajectories_list, dt):
+def velocityField(trajectories_list, cadence):
     """ Calculate the velocity field from the trajectories. """
 
     print("\nDetermining velocity fields...")
@@ -237,7 +236,7 @@ def velocityField(trajectories_list, dt):
 
             # Calculate number of frames and convert to seconds
             active_frames = len(frames) - 1
-            delta_t = active_frames * dt * u.s  # Converting to seconds
+            delta_t = active_frames * cadence * u.s  # Converting to seconds
 
             if delta_t > 0:
                 V = delta_X / delta_t #! ADJUST UNITS HERE (???)
@@ -262,7 +261,7 @@ def velocityField(trajectories_list, dt):
     return velocity_field
 
 
-def wavelet_mra_smooth(grid, wavelet='db4', levels=4):
+def mraSmoothing(grid, wavelet='db4', levels=4):
     """ Apply wavelet MRA smoothing to a 2D grid of velocities. """
     # Decompose the grid into wavelet coefficients
     coeffs = pywt.wavedec2(grid, wavelet, level=levels)
@@ -277,3 +276,32 @@ def wavelet_mra_smooth(grid, wavelet='db4', levels=4):
         ))
 
     return pywt.waverec2(coeffs_smooth, wavelet)
+
+
+def meanDistance(positions, temporal_window):
+    """ Calculate the mean distance between the nearest positions in the velocity field. """
+    """ Store the value in a file along with the temporal window size for plotting.  """
+
+    tree = KDTree(positions)  # Create a KDTree from the positions
+
+    # Query the tree for the nearest neighbours (k=2 to get the nearest and itself)
+    distances, _ = tree.query(positions, k=2)
+
+    # Exclude points' distance to themselves (first column of distances)
+    mean_distance = np.mean(distances[:, 1])    # Calculate mean of the nearest distances
+
+    # Define the file path
+    os.makedirs('output', exist_ok=True)  # Create the output directory if it doesn't exist
+    output_file = "mean_distances_thresh_5m.txt"
+    output_path = os.path.join('output', output_file)
+
+    # Check if the file exists, if not, create it and write the header
+    if not os.path.exists(output_path):
+        with open(output_path, "w") as file:
+            file.write("Temporal_Window\tMean_Distance\n")
+
+    # Append the temporal window and mean distance to the file
+    with open(output_path, "a") as file:
+        file.write(f"{temporal_window}\t{mean_distance}\n")
+
+    print(f"Temporal Window and Mean Distance appended to {output_path}\n")
