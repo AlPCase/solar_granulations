@@ -13,6 +13,18 @@ output_dir = r'C:/Users/AlexC/source/repos/solar_granulations/output'
 # Initialise a dictionary to store data
 file_data = {}
 
+# Define unique markers for each file
+markers = ['o', 'x', 'D']  # Add more markers if needed
+marker_index = 0
+
+# Define custom labels for the files
+custom_labels = {
+    '3.5 minute threshold.txt': '5 minutes',
+    '1.135s threshold.txt': '135 seconds',
+    '2. No threshold.txt': 'No thresholding'
+}
+
+
 # Loop through the .txt files in the output directory
 for file_name in os.listdir(output_dir):
 
@@ -39,11 +51,21 @@ for file_name in os.listdir(output_dir):
 # Plot the data from each file as a separate line
 plt.figure(figsize=(10, 10))
 for file_name, data in file_data.items():
+
+    # Use a unique marker for each file
+    marker = markers[marker_index % len(markers)]
+    marker_index += 1
+
+    # Use custom labels if available, otherwise use the file name
+    label = custom_labels.get(file_name, file_name)
+
     plt.plot(
         data['Temporal_Window'],
         data['Mean_Distance'],
-        marker='o',
-        label=file_name
+        marker=marker,
+        label=label,
+        color='black',
+        linestyle='--',  # Solid line for all files
     )
 
 plt.xscale('log', base=10)
@@ -57,7 +79,7 @@ plt.xticks([10**2, 10**3, 2 * 10**3], labels=["$10^2$", "$10^3$", "$2 \\times 10
 plt.title('Mean Distance between Measured Velocities vs Temporal Window')
 plt.xlabel('Temporal Window (s)')
 plt.ylabel('Mean Distance (Mm)')
-plt.legend(title='Files')
+plt.legend(title='Thresholds')
 plt.grid()
 
 os.makedirs('plots', exist_ok=True)

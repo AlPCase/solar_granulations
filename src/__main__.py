@@ -27,27 +27,25 @@ cadence = 45  # seconds
 roi_size = 25  # arcseconds
 roi_center = [0, 0] # Bottom-left corner of the region of interest (arcsecond coordinates)
 
+# Calculate the grid resolution based on the size of the region of interest (1.25Mm spacing, 1 pixel = 0.725Mm)
+grid_resolution = int(roi_size*2*0.725 / 1.25)  # Number of grid points in each dimension
+
 
 # Number of consective frames to process
-#num_frames =  #len(os.listdir(file_folder))  # Get the number of frames in the folder
+num_frames = 14 #len(os.listdir(file_folder))  # Get the number of frames in the folder
 
-#for num_frames in range(7, 36):
-
-num_frames = 7
 
 # Total time interval in seconds
 temporal_window = num_frames * cadence
 
-
-
 trajectories_list = trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi_center)
 
-filtered_trajectories = [
+"""filtered_trajectories = [
     traj for traj in trajectories_list
     if len(traj["frames"]) * cadence >= lifetime_threshold
-]
+]"""
 
-velocity_field = velocityField(filtered_trajectories, cadence)
+velocity_field = velocityField(trajectories_list, cadence)
 
 
 
@@ -55,14 +53,14 @@ velocity_field = velocityField(filtered_trajectories, cadence)
 
 # Extract positions and velocities from the velocity field
 positions = np.array([v["mean_position"] for v in velocity_field])
-vx = np.array([v["velocity"][0].value for v in velocity_field])  # Extract x-component of velocity
+vx = np.array([v["velocity"][0].value for v in velocity_field])  # Extract x-component of velocity #! These are switched :(
 vy = np.array([v["velocity"][1].value for v in velocity_field])  # Extract y-component of velocity
 
 # Calculate the mean distance between nearest-neighbour points in the velocity field and store to a file for plotting
-meanDistance(positions, temporal_window)
+#meanDistance(positions, temporal_window)
 
 # Define grid resolution (must be dyadic?) #! This requires adjustment.
-grid_resolution = 32
+grid_resolution = 30
 
 # Create a dyadic grid for the wavelet transform ????
 xi = np.linspace(roi_center[0], roi_center[0] + roi_size*2, grid_resolution)  # X range based on region of interest
@@ -90,8 +88,8 @@ fig, axs = plt.subplots(2, 2, figsize=(20, 20))  # Create two subplots side by s
 # Plot the trajectories
 for trajectory in trajectories_list:
     positions = np.array(trajectory["positions"])
-    axs[0,0].plot(positions[:, 0], positions[:, 1], marker='x', label=f'Trajectory {trajectory["id"]}')
-    axs[0,0].text(positions[-1, 0], positions[-1, 1], str(trajectory["id"]), fontsize=8, color='red')
+    axs[0,0].plot(positions[:, 1], positions[:, 0], marker='x', label=f'Trajectory {trajectory["id"]}')
+    axs[0,0].text(positions[-1, 1], positions[-1, 0], str(trajectory["id"]), fontsize=8, color='red')
 
 axs[0,0].set_title("Trajectories")
 axs[0,0].set_xlabel("X Position (pixels)")
@@ -105,8 +103,8 @@ for velocity_data in velocity_field:
 
     # Plot velocity vector as an arrow
     axs[0,1].quiver(
-        mean_position[0], mean_position[1],  # Starting point of the arrow
-        velocity[0].value, velocity[1].value,  # Velocity components (x, y)
+        mean_position[1], mean_position[0],  # Starting point of the arrow
+        velocity[1].value, velocity[0].value,  # Velocity components (x, y)
         angles='xy', scale_units='xy', scale=1, label='Velocity'
     )
 
@@ -114,10 +112,10 @@ axs[0,1].set_title("Velocity Field")
 axs[0,1].set_xlabel("X Position (pixels)")
 axs[0,1].set_ylabel("Y Position (pixels)")
 
-axs[1,0].quiver(grid_x, grid_y, grid_vx, grid_vy, scale=1, scale_units='xy')
+axs[1,0].quiver(grid_y, grid_x, grid_vy, grid_vx, scale=1, scale_units='xy')
 axs[1,0].set_title("Interpolated Velocity Field")
 
-axs[1,1].quiver(grid_x, grid_y, smoothed_vx, smoothed_vy, scale=1, scale_units='xy')
+axs[1,1].quiver(grid_y, grid_x, smoothed_vy, smoothed_vx, scale=1, scale_units='xy')
 axs[1,1].set_title("Smoothed Velocity Field")
 
 

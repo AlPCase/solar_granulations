@@ -1,6 +1,3 @@
-import matplotlib
-matplotlib.use('Agg')  # Use a non-interactive backend for matplotlib
-
 import os
 from src.utils import getimagemask, label_objects, matching, trajectories
 import sunpy.map as sm

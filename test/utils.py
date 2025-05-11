@@ -5,9 +5,10 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 from scipy.ndimage import label, center_of_mass
 from scipy.spatial import KDTree
+import pywt
 
 
-def calc_second_derivative(image, i, j):
+def calcSecondDerivative(image, i, j):
     """Calculate the second derivative for a given pixel."""
 
     # Define a 3x3 kernel around the pixel of interest that includes adjacent pixels
@@ -45,7 +46,7 @@ def calc_second_derivative(image, i, j):
         return 0  # Dark object pixel
 
 
-def getimagemask(file_index, file_folder, roi_size, roi_center):
+def getImageMask(file_index, file_folder, roi_size, roi_center):
     """ Load a FITS file, crop it, and create a binary mask. """
 
     file_list = sorted(os.listdir(file_folder))  # List the files in the folder
@@ -56,8 +57,8 @@ def getimagemask(file_index, file_folder, roi_size, roi_center):
 
 
     # Cropping a map using SkyCoord
-    top_right = SkyCoord(roi_size * u.arcsec, roi_size * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
-    bottom_left = SkyCoord(roi_center[0] * u.arcsec, roi_center[1] * u.arcsec, frame = sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
+    top_right = SkyCoord((roi_center[0]+800)*u.arcsec, (roi_center[1]+roi_size)*u.arcsec, frame=sunpy_map_rotated.coordinate_frame)  # Define the top right corner of the cropped image as a SkyCoord object
+    bottom_left = SkyCoord(roi_center[0]*u.arcsec, roi_center[1]*u.arcsec, frame=sunpy_map_rotated.coordinate_frame)  # Define the bottom left corner of the cropped image as a SkyCoord object
     cropped_map = sunpy_map_rotated.submap(bottom_left, top_right = top_right)  # Crop the SunPy map object
 
 
@@ -68,13 +69,12 @@ def getimagemask(file_index, file_folder, roi_size, roi_center):
 
     for i in range(1, padded_image.shape[0] - 1):
         for j in range(1, padded_image.shape[0] - 1):
-            binary_mask[i-1, j-1] = calc_second_derivative(padded_image, i, j)  # Store the result of calc_second_derivative in the binary mask. Subtract 1 from i and j to account for padding.
+            binary_mask[i-1, j-1] = calcSecondDerivative(padded_image, i, j)  # Store the result of calcSecondDerivative in the binary mask. Subtract 1 from i and j to account for padding.
 
     return cropped_map, binary_mask
 
 
-
-def label_objects(binary_mask):
+def labelObjects(binary_mask):
     """Label connected components in the binary mask."""
 
     labelled_mask = np.zeros(binary_mask.shape)  # Create an array of zeros with the same shape as the binary mask
@@ -125,6 +125,8 @@ def matching(centroids_OLD, centroids_NEW, flow_velocity_threshold):
 
 def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi_center):
     """ Calculate the trajectories of centroids in a series of images. """
+    
+    print("\nConstructing trajectories...")
 
     # Initialise trajectories
     trajectories_list = []          # List to store trajectories
@@ -136,8 +138,9 @@ def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi
 
     # Process each frame and calulate the centroids
     for frame_index in range(num_frames):
-        cropped_map, binary_mask = getimagemask(frame_index, file_folder, roi_size, roi_center)        # Store the FITS image in the file as a cropped sunpy map & create a binary mask
-        labelled_mask, num_features = label_objects(binary_mask)    # Label the objects in the binary mask
+        print(f"Processing frame {frame_index+1} of {num_frames}...")
+        cropped_map, binary_mask = getImageMask(frame_index, file_folder, roi_size, roi_center)        # Store the FITS image in the file as a cropped sunpy map & create a binary mask
+        labelled_mask, num_features = labelObjects(binary_mask)    # Label the objects in the binary mask
         centroids = np.array(center_of_mass(labelled_mask, labels=labelled_mask, index=np.unique(labelled_mask)[1:])) # Calculate the centroids of the labelled objects and turn them into a NumPy array
         all_centroids.append(centroids)                             # Append the centroids to the list
 
@@ -209,3 +212,96 @@ def trajectories(num_frames, file_folder, flow_velocity_threshold, roi_size, roi
                     completed_trajectories.add(trajectory["id"])  # Mark the trajectory as completed
 
     return trajectories_list
+
+
+def velocityField(trajectories_list, cadence):
+    """ Calculate the velocity field from the trajectories. """
+
+    print("\nDetermining velocity fields...")
+    
+    # Define the velocity field as a list of dictionaries
+    velocity_field = []
+    
+    
+    for traj in trajectories_list:  
+        positions = np.array(traj["positions"]) # Convert the list of positions to a NumPy array
+        frames = np.array(traj["frames"])       # Convert the list of frames to a NumPy array
+
+
+        if len(frames) > 1:
+            # Calculate the mean velocity associated with each trajectory
+            # V_k = (X_n2 - X_n1) / (t_n2 - t_n1)
+            displacement = positions[-1] - positions[0] # Calculate displacement in pixels as the difference between the final and first positions
+            delta_X = displacement * (725/2) * u.km  # Convert to km
+
+            # Calculate number of frames and convert to seconds
+            active_frames = len(frames) - 1
+            delta_t = active_frames * cadence * u.s  # Converting to seconds
+
+            if delta_t > 0:
+                V = delta_X / delta_t #! ADJUST UNITS HERE (???)
+            else:
+                V = np.array([0, 0]) * u.pix #u.km / u.s  # Assign zero velocity if no time difference
+
+            # Calculate the mean position of each trajectory
+            # X_k = 1/(n1 - n2 + 1) * sum(X_n1, X_n2, ..., X_nk)
+            mean_position = np.mean(positions, axis=0)  # Mean position of the trajectory
+
+            # Combine the mean velocity and mean position of each trajectory
+            # into set {V_k, X_k} for each trajectory k
+            velocity_field.append({
+                "velocity": V,
+                "mean_position": mean_position,
+                "trajectory_id": traj["id"]
+            })
+        
+        else:
+            continue
+
+    return velocity_field
+
+
+def mraSmoothing(grid, wavelet='db4', levels=4):
+    """ Apply wavelet MRA smoothing to a 2D grid of velocities. """
+    # Decompose the grid into wavelet coefficients
+    coeffs = pywt.wavedec2(grid, wavelet, level=levels)
+
+    # Keep only the approximation coefficients at the coarsest scale
+    coeffs_smooth = [coeffs[0]]
+    for i in range(1, len(coeffs)):
+        coeffs_smooth.append((
+            (np.zeros_like(coeffs[i][0])),
+            (np.zeros_like(coeffs[i][1])),
+            (np.zeros_like(coeffs[i][2]))
+        ))
+
+    return pywt.waverec2(coeffs_smooth, wavelet)
+
+
+def meanDistance(positions, temporal_window):
+    """ Calculate the mean distance between the nearest positions in the velocity field. """
+    """ Store the value in a file along with the temporal window size for plotting.  """
+
+    tree = KDTree(positions)  # Create a KDTree from the positions
+
+    # Query the tree for the nearest neighbours (k=2 to get the nearest and itself)
+    distances, _ = tree.query(positions, k=2)
+
+    # Exclude points' distance to themselves (first column of distances)
+    mean_distance = np.mean(distances[:, 1])    # Calculate mean of the nearest distances
+
+    # Define the file path
+    os.makedirs('output', exist_ok=True)  # Create the output directory if it doesn't exist
+    output_file = "mean_distances_thresh_5m.txt"
+    output_path = os.path.join('output', output_file)
+
+    # Check if the file exists, if not, create it and write the header
+    if not os.path.exists(output_path):
+        with open(output_path, "w") as file:
+            file.write("Temporal_Window\tMean_Distance\n")
+
+    # Append the temporal window and mean distance to the file
+    with open(output_path, "a") as file:
+        file.write(f"{temporal_window}\t{mean_distance}\n")
+
+    print(f"Temporal Window and Mean Distance appended to {output_path}\n")
